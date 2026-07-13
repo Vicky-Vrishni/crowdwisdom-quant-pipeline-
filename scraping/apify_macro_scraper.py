@@ -3,6 +3,8 @@ from datetime import datetime, timedelta, timezone
 
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
+load_dotenv()  
 
 from config import (
     APIFY_API_TOKEN,
@@ -49,18 +51,17 @@ def fetch_via_apify(lookback_days: int) -> pd.DataFrame | None:
 
     try:
         client = ApifyClient(APIFY_API_TOKEN)
-        date_from = (datetime.utcnow() - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
-        date_to = datetime.utcnow().strftime("%Y-%m-%d")
-
         run_input = {
-            "dateFrom": date_from,
-            "dateTo": date_to,
-            "countries": ["United States"],
-            "importance": ["high", "medium"],
+           "timeFilter": "time_only",
+            "importances": "",      
+            "categories": "",       
+            "country": "united states",
         }
         log.info("Calling Apify actor '%s' with input %s", APIFY_MACRO_CALENDAR_ACTOR_ID, run_input)
         run = client.actor(APIFY_MACRO_CALENDAR_ACTOR_ID).call(run_input=run_input)
-        items = list(client.dataset(run["defaultDatasetId"]).iterate_items())
+        
+        # FIXED: Dictionary syntax run["defaultDatasetId"] changed to object property run.default_dataset_id
+        items = list(client.dataset(run.default_dataset_id).iterate_items())
 
         if not items:
             log.warning("Apify actor returned 0 items.")
@@ -94,7 +95,7 @@ def _normalize_apify_df(raw: pd.DataFrame) -> pd.DataFrame:
 
     out = pd.DataFrame({
         "event_name": pick(col_map_candidates["event_name"]),
-        "event_ts_utc": pd.to_datetime(pick(col_map_candidates["event_ts"]), utc=True, errors="coerce"),
+        "event_ts_utc": pd.to_datetime(pick(col_map_candidates["event_ts"]), utc=True, errors="coerce", format='mixed'),
         "country": pick(col_map_candidates["country"]),
         "forecast_value": pd.to_numeric(pick(col_map_candidates["forecast_value"]), errors="coerce"),
         "actual_value": pd.to_numeric(pick(col_map_candidates["actual_value"]), errors="coerce"),

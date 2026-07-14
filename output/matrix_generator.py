@@ -16,12 +16,25 @@ DEFAULT_BASELINE_PERMUTATION = SIMULATION_PERMUTATIONS[0]
 
 
 def build_best_permutation_matrix(predictions: pd.DataFrame) -> pd.DataFrame:
+    """Averages predicted_pnl per (weekday, hour, permutation) across all
+    walk-forward folds (a permutation may appear in several test folds),
+    then picks the argmax permutation per cell.
+    """
     cell_scores = predictions.groupby(
         ["weekday", "hour_of_day", "simulation_permutation"], as_index=False
     )["predicted_pnl"].mean()
 
     best = cell_scores.loc[cell_scores.groupby(["weekday", "hour_of_day"])["predicted_pnl"].idxmax()]
     return best.sort_values(["weekday", "hour_of_day"])
+
+
+def build_hourly_prediction_table(predictions: pd.DataFrame) -> pd.DataFrame:
+    table = predictions.groupby("hour_of_day", as_index=False).agg(
+        predicted_mean_pnl=("predicted_pnl", "mean"),
+        actual_mean_pnl=("actual_pnl", "mean"),
+        n_bucket_predictions=("predicted_pnl", "size"),
+    )
+    return table.sort_values("hour_of_day")
 
 
 def plot_heatmap(best_matrix: pd.DataFrame, save_path):
@@ -111,6 +124,11 @@ def run(predictions: pd.DataFrame):
     heatmap_path = OUTPUT_DIR / "matrix_heatmap.png"
     plot_heatmap(best_matrix, heatmap_path)
 
+    hourly_table = build_hourly_prediction_table(predictions)
+    hourly_table_path = OUTPUT_DIR / "predicted_vs_actual_hour_slots.csv"
+    hourly_table.to_csv(hourly_table_path, index=False)
+    log.info("Saved hourly prediction table to %s", hourly_table_path)
+
     model_curve, baseline_curve = build_equity_curves(predictions)
     equity_path = OUTPUT_DIR / "equity_curve.png"
     plot_equity_curves(model_curve, baseline_curve, equity_path)
@@ -126,4 +144,3 @@ if __name__ == "__main__":
     from db.db_utils import read_sql
     preds = read_sql("SELECT * FROM walk_forward_predictions")
     run(preds)
-
